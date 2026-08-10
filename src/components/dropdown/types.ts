@@ -18,9 +18,11 @@ export interface DropdownConfig {
   placeholder?: string;
   label?: string;
   disabled?: boolean;
+  loading?: boolean;
   selectedOptionId?: string;
   width?: number;
   maxVisibleItems?: number;
+  onOptionsRequest?: () => void;
   onSelect?: (selection: DropdownSelection) => void;
 }
 
@@ -31,19 +33,29 @@ export interface NineSliceBorders {
   bottom: number;
 }
 
+export interface ShadowInsets {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
 export interface DropdownBackgroundResource {
   texture: Texture;
   borders: NineSliceBorders;
+  shadowInsets: ShadowInsets;
 }
 
 export interface DropdownResources {
   headerBackground: DropdownBackgroundResource;
   listBackground: DropdownBackgroundResource;
+  selectionIndicatorTexture: Texture;
 }
 
 export interface DropdownState {
   id: string;
   isOpen: boolean;
   isDisabled: boolean;
+  isLoading: boolean;
   selectedOptionId: string | null;
 }
