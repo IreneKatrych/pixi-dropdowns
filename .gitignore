@@ -1,0 +1,25 @@
+node_modules/
+dist/
+
+# Playwright artifacts
+playwright-report/
+test-results/
+blob-report/
+
+# Local environment and logs
+.env
+.env.*
+!.env.example
+*.log
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# The assignment brief is not intended for public distribution
+task-requirements.pdf
+
+# Local Codex collaboration context
+AGENTS.md

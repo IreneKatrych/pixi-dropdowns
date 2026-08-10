@@ -1,0 +1,26 @@
+{
+  "name": "pixi-dropdown-test-task",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Test assignment: TypeScript + Pixi.js v7 + GSAP + Playwright",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "test:e2e": "playwright test"
+  },
+  "engines": {
+    "node": ">=20 <23"
+  },
+  "dependencies": {
+    "gsap": "3.12.5",
+    "pixi.js": "7.4.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/node": "22.14.0",
+    "typescript": "5.5.2",
+    "vite": "8.2.1"
+  }
+}
