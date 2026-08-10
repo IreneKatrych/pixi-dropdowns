@@ -1,0 +1,49 @@
+import type { Texture } from 'pixi.js';
+
+export interface DropdownOption {
+  id: string;
+  label: string;
+  disabled?: boolean;
+  icon?: Texture;
+}
+
+export interface DropdownSelection {
+  dropdownId: string;
+  option: DropdownOption;
+}
+
+export interface DropdownConfig {
+  id: string;
+  options: DropdownOption[];
+  placeholder?: string;
+  label?: string;
+  disabled?: boolean;
+  selectedOptionId?: string;
+  width?: number;
+  maxVisibleItems?: number;
+  onSelect?: (selection: DropdownSelection) => void;
+}
+
+export interface NineSliceBorders {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export interface DropdownBackgroundResource {
+  texture: Texture;
+  borders: NineSliceBorders;
+}
+
+export interface DropdownResources {
+  headerBackground: DropdownBackgroundResource;
+  listBackground: DropdownBackgroundResource;
+}
+
+export interface DropdownState {
+  id: string;
+  isOpen: boolean;
+  isDisabled: boolean;
+  selectedOptionId: string | null;
+}
