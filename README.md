@@ -8,6 +8,8 @@ This project demonstrates a reusable dropdown component rendered entirely on a P
 
 The implementation focuses on clear component boundaries, predictable lifecycle and resource ownership, GPU-friendly animation, and reliable end-to-end testing of canvas interactions without hardcoded screen coordinates.
 
+The async example is intentionally deterministic: its first simulated request fails so the error and retry flow can be reviewed, while the second request succeeds. The application owns the request lifecycle and aborts in-flight work when it is destroyed; the dropdown only renders idle, loading, error, ready, and empty-result presentations.
+
 ## Tech stack
 
 - **PixiJS 7.4.2** — canvas rendering, display objects, textures, and pointer interaction

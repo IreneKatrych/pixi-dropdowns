@@ -67,7 +67,8 @@ export class DropdownDemoApp {
   private application: Application | null = null;
   private checkmarkTexture: Texture | null = null;
   private canvasElement: HTMLCanvasElement | null = null;
-  private delayedOptionsTimer: number | null = null;
+  private delayedOptionsAbortController: AbortController | null = null;
+  private delayedOptionsRequestCount = 0;
   private dropdowns: Dropdown[] = [];
   private iconTextures: Texture[] = [];
   private panelTexture: Texture | null = null;
@@ -185,10 +186,8 @@ export class DropdownDemoApp {
     this.canvasElement?.removeEventListener('wheel', this.handleCanvasWheel);
     this.canvasElement = null;
 
-    if (this.delayedOptionsTimer !== null) {
-      window.clearTimeout(this.delayedOptionsTimer);
-      this.delayedOptionsTimer = null;
-    }
+    this.delayedOptionsAbortController?.abort();
+    this.delayedOptionsAbortController = null;
 
     this.dropdowns.forEach((dropdown) => dropdown.destroy({ children: true }));
     this.dropdowns = [];
@@ -306,20 +305,62 @@ export class DropdownDemoApp {
     itemsDropdown.setDisabled(false);
   };
 
-  private readonly handleDelayedOptionsRequest = (): void => {
+  private readonly handleDelayedOptionsRequest = async (): Promise<void> => {
     const delayedDropdown = this.getDropdown(DROPDOWN_IDS.delayedOptions);
 
-    if (!delayedDropdown || this.delayedOptionsTimer !== null) {
+    if (!delayedDropdown || this.delayedOptionsAbortController) {
       return;
     }
 
+    const abortController = new AbortController();
+    this.delayedOptionsAbortController = abortController;
+    this.delayedOptionsRequestCount += 1;
     delayedDropdown.setLoading(true);
-    this.delayedOptionsTimer = window.setTimeout(() => {
+
+    try {
+      await this.simulateOptionsRequest(
+        abortController.signal,
+        this.delayedOptionsRequestCount === 1,
+      );
+
+      if (abortController.signal.aborted) {
+        return;
+      }
+
       delayedDropdown.setOptions(DELAYED_OPTIONS);
-      delayedDropdown.setLoading(false);
-      this.delayedOptionsTimer = null;
-    }, SIMULATED_OPTIONS_DELAY_MS);
+    } catch (error) {
+      if (!abortController.signal.aborted) {
+        delayedDropdown.setLoadError();
+      }
+    } finally {
+      if (this.delayedOptionsAbortController === abortController) {
+        this.delayedOptionsAbortController = null;
+      }
+    }
   };
+
+  private simulateOptionsRequest(
+    signal: AbortSignal,
+    shouldFail: boolean,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        signal.removeEventListener('abort', handleAbort);
+
+        if (shouldFail) {
+          reject(new Error('Simulated options request failure'));
+        } else {
+          resolve();
+        }
+      }, SIMULATED_OPTIONS_DELAY_MS);
+      const handleAbort = (): void => {
+        window.clearTimeout(timer);
+        reject(new DOMException('Request aborted', 'AbortError'));
+      };
+
+      signal.addEventListener('abort', handleAbort, { once: true });
+    });
+  }
 
   private readonly handleDropdownOpenChange = (
     change: DropdownOpenChange,

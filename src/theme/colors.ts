@@ -1,6 +1,7 @@
 export const COLORS = {
   canvasBackground: 0xb9bbc0,
   accent: 0x16a34a,
+  error: 0xdc2626,
   surface: 0xf8fafc,
   surfaceBorder: 0x64748b,
   pressedItemBackground: 0xdcfce7,

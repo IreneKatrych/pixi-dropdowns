@@ -17,6 +17,8 @@ export interface DropdownOpenChange {
   isOpen: boolean;
 }
 
+export type DropdownContentState = 'idle' | 'loading' | 'ready' | 'error';
+
 export interface DropdownConfig {
   id: string;
   options: DropdownOption[];
@@ -60,6 +62,7 @@ export interface DropdownResources {
 
 export interface DropdownState {
   id: string;
+  contentState: DropdownContentState;
   isOpen: boolean;
   isDisabled: boolean;
   isLoading: boolean;

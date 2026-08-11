@@ -15,6 +15,7 @@ import { DropdownItem } from './DropdownItem';
 import { DropdownItemFactory } from './DropdownItemFactory';
 import { DropdownScrollController } from './DropdownScrollController';
 import { DropdownScrollbarView } from './DropdownScrollbarView';
+import { DropdownStatusView } from './DropdownStatusView';
 import {
   resolveDropdownLayout,
   type ResolvedDropdownLayout,
@@ -23,6 +24,7 @@ import { fitTextWithEllipsis } from './textLayout';
 import type {
   DropdownBackgroundResource,
   DropdownConfig,
+  DropdownContentState,
   DropdownOption,
   DropdownResources,
   DropdownState,
@@ -35,6 +37,7 @@ const TOGGLE_ANIMATION_DURATION = 0.18;
 const LIST_ANIMATION_DURATION = 0.2;
 const LIST_CLOSED_OFFSET_Y = -6;
 const LOADING_LABEL = 'Loading options…';
+const LOAD_ERROR_LABEL = 'Failed to load. Tap to retry';
 const OVERSCAN_ITEM_COUNT = 2;
 
 const SKELETON_LAYOUT = {
@@ -53,6 +56,12 @@ const VALUE_TEXT_STYLE = new TextStyle({
   fontFamily: TYPOGRAPHY.fontFamily,
   fontSize: TYPOGRAPHY.bodySize,
   fill: COLORS.textPrimary,
+});
+
+const ERROR_TEXT_STYLE = new TextStyle({
+  fontFamily: TYPOGRAPHY.fontFamily,
+  fontSize: TYPOGRAPHY.bodySize,
+  fill: COLORS.error,
 });
 
 const FIELD_LABEL_TEXT_STYLE = new TextStyle({
@@ -78,12 +87,15 @@ export class Dropdown extends Container {
   private readonly scrollController: DropdownScrollController;
   private readonly scrollbarView: DropdownScrollbarView;
   private readonly skeletonContainer = new Container();
+  private readonly statusView: DropdownStatusView;
   private readonly toggleIndicator: Graphics;
   private readonly valueLabel: Text;
 
   private isDisabled: boolean;
   private isLoading: boolean;
   private isOpen: boolean;
+  private contentState: DropdownContentState;
+  private loadErrorMessage = LOAD_ERROR_LABEL;
   private options: DropdownOption[];
   private scrollbarDragPointerId: number | null = null;
   private scrollbarDragStartProgress = 0;
@@ -99,6 +111,11 @@ export class Dropdown extends Container {
     this.validateOptions(this.options);
     this.isDisabled = config.disabled ?? false;
     this.isLoading = config.loading ?? false;
+    this.contentState = this.isLoading
+      ? 'loading'
+      : config.options.length > 0 || !config.onOptionsRequest
+        ? 'ready'
+        : 'idle';
     this.isOpen = this.isLoading;
     this.selectedOption = this.resolveInitialSelection(config.selectedOptionId);
     this.itemFactory = new DropdownItemFactory(
@@ -143,12 +160,18 @@ export class Dropdown extends Container {
       this.layout.toggleIndicatorAreaWidth / 2;
     this.toggleIndicator.y = this.layout.rowHeight / 2;
 
+    this.statusView = new DropdownStatusView(this.layout);
+
     this.listPanel = this.createNineSlicePlane(
       resources.listBackground,
       this.layout.rowHeight,
     );
     this.listViewport.mask = this.listMask;
-    this.listViewport.addChild(this.itemsContainer, this.skeletonContainer);
+    this.listViewport.addChild(
+      this.itemsContainer,
+      this.skeletonContainer,
+      this.statusView,
+    );
     this.listAnimationContainer.addChild(
       this.listPanel,
       this.listViewport,
@@ -184,7 +207,7 @@ export class Dropdown extends Container {
       this.listContainer.visible = true;
       this.openCloseTimeline.progress(1);
     }
-    this.updateLoadingPresentation();
+    this.updateContentPresentation();
     this.alpha = this.isDisabled ? 0.55 : 1;
   }
 
@@ -227,12 +250,35 @@ export class Dropdown extends Container {
 
     const selectedOptionId = this.selectedOption?.id;
     this.options = [...options];
+    this.isLoading = false;
+    this.contentState = 'ready';
+    this.destroySkeleton();
     this.selectedOption = selectedOptionId
       ? (this.options.find((option) => option.id === selectedOptionId) ?? null)
       : null;
 
     this.updateValueLabel();
     this.renderOptions();
+    this.updateContentPresentation();
+    this.updateListInteraction();
+  }
+
+  public setLoadError(message = LOAD_ERROR_LABEL): void {
+    this.isLoading = false;
+    this.contentState = 'error';
+    this.loadErrorMessage = message;
+    this.destroySkeleton();
+    this.updateValueLabel();
+    this.updateListViewport();
+    this.updateContentPresentation();
+
+    if (this.isOpen) {
+      this.listContainer.visible = true;
+      this.openCloseTimeline.play();
+    } else {
+      this.openCloseTimeline.reverse();
+    }
+    this.updateListInteraction();
   }
 
   public setLoading(loading: boolean): void {
@@ -241,6 +287,7 @@ export class Dropdown extends Container {
     }
 
     this.isLoading = loading;
+    this.contentState = loading ? 'loading' : 'ready';
 
     if (loading && this.skeletonContainer.children.length === 0) {
       this.renderSkeleton();
@@ -251,7 +298,7 @@ export class Dropdown extends Container {
     this.updateHeaderInteraction();
     this.updateValueLabel();
     this.updateListViewport();
-    this.updateLoadingPresentation();
+    this.updateContentPresentation();
 
     if (loading) {
       if (!this.isOpen) {
@@ -351,6 +398,7 @@ export class Dropdown extends Container {
   public getState(): DropdownState {
     return {
       id: this.config.id,
+      contentState: this.contentState,
       isOpen: this.isOpen,
       isDisabled: this.isDisabled,
       isLoading: this.isLoading,
@@ -377,7 +425,10 @@ export class Dropdown extends Container {
       return;
     }
 
-    if (this.options.length === 0 && this.config.onOptionsRequest) {
+    if (
+      (this.contentState === 'idle' || this.contentState === 'error') &&
+      this.config.onOptionsRequest
+    ) {
       this.config.onOptionsRequest();
       return;
     }
@@ -690,9 +741,12 @@ export class Dropdown extends Container {
   }
 
   private updateListViewport(): void {
-    const itemCount = this.isLoading
-      ? SKELETON_LAYOUT.barWidthRatios.length
-      : this.options.length;
+    const itemCount =
+      this.contentState === 'loading'
+        ? SKELETON_LAYOUT.barWidthRatios.length
+        : this.contentState === 'error' || this.options.length === 0
+          ? 1
+          : this.options.length;
     const visibleItemCount = Math.max(
       1,
       Math.min(itemCount, this.layout.maxVisibleItems),
@@ -755,16 +809,30 @@ export class Dropdown extends Container {
     this.listContainer.off('pointercancel', this.handlePointerCancel);
   }
 
-  private updateLoadingPresentation(): void {
-    this.itemsContainer.visible = !this.isLoading;
-    this.skeletonContainer.visible = this.isLoading;
+  private updateContentPresentation(): void {
+    const hasLoadError = this.contentState === 'error';
+    const hasEmptyResult =
+      this.contentState === 'ready' && this.options.length === 0;
+
+    if (hasLoadError) {
+      this.statusView.showError();
+    } else if (hasEmptyResult) {
+      this.statusView.showEmpty();
+    } else {
+      this.statusView.hide();
+    }
+
+    this.itemsContainer.visible =
+      this.contentState === 'ready' && this.options.length > 0;
+    this.skeletonContainer.visible = this.contentState === 'loading';
     this.valueLabel.alpha = this.isLoading ? 0.55 : 1;
   }
 
   private updateListInteraction(): void {
     const isInteractive =
       this.isOpen &&
-      !this.isLoading &&
+      this.contentState === 'ready' &&
+      this.options.length > 0 &&
       this.openCloseTimeline.progress() === 1;
     this.listContainer.eventMode = isInteractive ? 'static' : 'none';
   }
@@ -786,11 +854,14 @@ export class Dropdown extends Container {
   }
 
   private updateValueLabel(): void {
-    const value = this.isLoading
-      ? LOADING_LABEL
-      : (this.selectedOption?.label ??
-        this.config.placeholder ??
-        DEFAULT_PLACEHOLDER);
+    const value =
+      this.contentState === 'loading'
+        ? LOADING_LABEL
+        : this.contentState === 'error'
+          ? this.loadErrorMessage
+          : (this.selectedOption?.label ??
+            this.config.placeholder ??
+            DEFAULT_PLACEHOLDER);
     const availableWidth =
       this.layout.width -
       this.layout.horizontalPadding * 2 -
@@ -798,9 +869,11 @@ export class Dropdown extends Container {
 
     this.valueLabel.text = fitTextWithEllipsis(
       value,
-      VALUE_TEXT_STYLE,
+      this.contentState === 'error' ? ERROR_TEXT_STYLE : VALUE_TEXT_STYLE,
       availableWidth,
     );
+    this.valueLabel.style =
+      this.contentState === 'error' ? ERROR_TEXT_STYLE : VALUE_TEXT_STYLE;
   }
 
   private validateOptions(options: DropdownOption[]): void {
