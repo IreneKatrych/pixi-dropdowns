@@ -40,6 +40,7 @@ export class DropdownItem extends Container {
   private isHovered = false;
   private isPressed = false;
   private isSelected = false;
+  private isScrollGestureActive = false;
   private option: DropdownOption;
 
   public constructor(
@@ -124,6 +125,16 @@ export class DropdownItem extends Container {
     this.checkmark.visible = this.isSelected;
   }
 
+  public setScrollGestureActive(active: boolean): void {
+    this.isScrollGestureActive = active;
+
+    if (active) {
+      this.isHovered = false;
+      this.isPressed = false;
+      this.applyVisualState(false);
+    }
+  }
+
   public override destroy(): void {
     this.unregisterPointerEvents();
     this.killStateAnimations();
@@ -132,7 +143,7 @@ export class DropdownItem extends Container {
   }
 
   private readonly handlePointerDown = (): void => {
-    if (this.option.disabled) {
+    if (this.option.disabled || this.isScrollGestureActive) {
       return;
     }
 
@@ -151,7 +162,11 @@ export class DropdownItem extends Container {
   };
 
   private readonly handlePointerOver = (event: FederatedPointerEvent): void => {
-    if (this.option.disabled || event.pointerType !== 'mouse') {
+    if (
+      this.option.disabled ||
+      this.isScrollGestureActive ||
+      event.pointerType !== 'mouse'
+    ) {
       return;
     }
 

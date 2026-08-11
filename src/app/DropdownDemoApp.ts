@@ -10,6 +10,7 @@ import { APP_CONFIG } from './appConfig';
 import {
   CATEGORY_DEFINITIONS,
   DELAYED_OPTIONS,
+  createLargeDataset,
   getCategoryItems,
   type CategoryId,
 } from './demoData';
@@ -17,9 +18,22 @@ import {
 const PANEL_TEXTURE_URL = '/assets/w-r-ds_fog.png';
 const CHECKMARK_TEXTURE_URL = '/assets/checkmark.png';
 const SIMULATED_OPTIONS_DELAY_MS = 1_500;
+const LARGE_DATASET_SIZE = 10_000;
 const DROPDOWN_WIDTH = 300;
 const DROPDOWN_GAP = 28;
+const SHOWCASE_ROW_GAP = 32;
 const PAGE_PADDING = 40;
+const WHEEL_LINE_HEIGHT = 16;
+const PAIR_COLUMN_COUNT = 2;
+const SINGLE_COLUMN_COUNT = 1;
+const HORIZONTAL_PAGE_PADDING = PAGE_PADDING * 2;
+
+const DROPDOWN_IDS = {
+  category: 'category',
+  categoryItems: 'category-items',
+  delayedOptions: 'delayed-options',
+  largeDataset: 'large-dataset',
+} as const;
 
 const PANEL_NINE_SLICE_BORDERS = {
   left: 45,
@@ -44,6 +58,7 @@ const CATEGORY_ICON_COLORS: Record<CategoryId, number> = {
 export class DropdownDemoApp {
   private application: Application | null = null;
   private checkmarkTexture: Texture | null = null;
+  private canvasElement: HTMLCanvasElement | null = null;
   private delayedOptionsTimer: number | null = null;
   private dropdowns: Dropdown[] = [];
   private iconTextures: Texture[] = [];
@@ -69,7 +84,11 @@ export class DropdownDemoApp {
     });
 
     this.application = application;
-    this.mountElement.appendChild(application.view as HTMLCanvasElement);
+    this.canvasElement = application.view as HTMLCanvasElement;
+    this.mountElement.appendChild(this.canvasElement);
+    this.canvasElement.addEventListener('wheel', this.handleCanvasWheel, {
+      passive: false,
+    });
     window.addEventListener('resize', this.handleResize);
 
     try {
@@ -87,7 +106,7 @@ export class DropdownDemoApp {
 
       const delayedDropdown = new Dropdown(
         {
-          id: 'delayed-options',
+          id: DROPDOWN_IDS.delayedOptions,
           options: [],
           label: 'Loaded from API',
           placeholder: 'Select an option',
@@ -98,7 +117,7 @@ export class DropdownDemoApp {
       );
       const categoryDropdown = new Dropdown(
         {
-          id: 'category',
+          id: DROPDOWN_IDS.category,
           options: categoryOptions,
           label: 'Category with icons',
           placeholder: 'Select a category',
@@ -109,7 +128,7 @@ export class DropdownDemoApp {
       );
       const itemsDropdown = new Dropdown(
         {
-          id: 'category-items',
+          id: DROPDOWN_IDS.categoryItems,
           options: [],
           label: 'Category items',
           placeholder: 'Select a category first',
@@ -119,8 +138,24 @@ export class DropdownDemoApp {
         },
         resources,
       );
+      const largeDatasetDropdown = new Dropdown(
+        {
+          id: DROPDOWN_IDS.largeDataset,
+          options: createLargeDataset(LARGE_DATASET_SIZE),
+          label: 'Virtualized 10,000 options',
+          placeholder: 'Select a performance option',
+          width: DROPDOWN_WIDTH,
+          maxVisibleItems: 5,
+        },
+        resources,
+      );
 
-      this.dropdowns = [delayedDropdown, categoryDropdown, itemsDropdown];
+      this.dropdowns = [
+        categoryDropdown,
+        itemsDropdown,
+        delayedDropdown,
+        largeDatasetDropdown,
+      ];
       application.stage.addChild(...this.dropdowns);
       this.layout();
 
@@ -132,6 +167,8 @@ export class DropdownDemoApp {
 
   public destroy(): void {
     window.removeEventListener('resize', this.handleResize);
+    this.canvasElement?.removeEventListener('wheel', this.handleCanvasWheel);
+    this.canvasElement = null;
 
     if (this.delayedOptionsTimer !== null) {
       window.clearTimeout(this.delayedOptionsTimer);
@@ -190,24 +227,54 @@ export class DropdownDemoApp {
       return;
     }
 
-    const requiredWidth =
-      this.dropdowns.length * DROPDOWN_WIDTH +
-      (this.dropdowns.length - 1) * DROPDOWN_GAP +
-      PAGE_PADDING * 2;
-    const useColumns = this.application.screen.width >= requiredWidth;
+    const screenWidth = window.innerWidth;
+    const pairWidth =
+      DROPDOWN_WIDTH * PAIR_COLUMN_COUNT + DROPDOWN_GAP;
+    const usePairs =
+      screenWidth >= pairWidth + HORIZONTAL_PAGE_PADDING;
+    const columnCount = usePairs
+      ? PAIR_COLUMN_COUNT
+      : SINGLE_COLUMN_COUNT;
+    const gridWidth =
+      columnCount * DROPDOWN_WIDTH + (columnCount - 1) * DROPDOWN_GAP;
+    const gridX = Math.max(
+      PAGE_PADDING,
+      (screenWidth - gridWidth) / 2,
+    );
+    const rowCount = Math.ceil(this.dropdowns.length / columnCount);
+    let nextRowY = PAGE_PADDING;
 
-    this.dropdowns.forEach((dropdown, index) => {
-      dropdown.x = useColumns
-        ? PAGE_PADDING + index * (DROPDOWN_WIDTH + DROPDOWN_GAP)
-        : Math.max(PAGE_PADDING, (this.application!.screen.width - DROPDOWN_WIDTH) / 2);
-      dropdown.y = useColumns ? 72 : 40 + index * 112;
-    });
+    for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+      const rowStart = rowIndex * columnCount;
+      const rowDropdowns = this.dropdowns.slice(
+        rowStart,
+        rowStart + columnCount,
+      );
+      const rowHeight = Math.max(
+        ...rowDropdowns.map((dropdown) =>
+          dropdown.getMaximumExpandedHeight(),
+        ),
+      );
+
+      rowDropdowns.forEach((dropdown, columnIndex) => {
+        dropdown.x =
+          gridX + columnIndex * (DROPDOWN_WIDTH + DROPDOWN_GAP);
+        dropdown.y = nextRowY;
+      });
+      nextRowY += rowHeight + SHOWCASE_ROW_GAP;
+    }
+
+    const requiredHeight = nextRowY - SHOWCASE_ROW_GAP + PAGE_PADDING;
+    this.application.renderer.resize(
+      screenWidth,
+      Math.max(window.innerHeight, Math.ceil(requiredHeight)),
+    );
   }
 
   private readonly handleCategorySelect = (
     selection: DropdownSelection,
   ): void => {
-    const itemsDropdown = this.dropdowns[2];
+    const itemsDropdown = this.getDropdown(DROPDOWN_IDS.categoryItems);
 
     if (!itemsDropdown) {
       return;
@@ -219,7 +286,7 @@ export class DropdownDemoApp {
   };
 
   private readonly handleDelayedOptionsRequest = (): void => {
-    const delayedDropdown = this.dropdowns[0];
+    const delayedDropdown = this.getDropdown(DROPDOWN_IDS.delayedOptions);
 
     if (!delayedDropdown || this.delayedOptionsTimer !== null) {
       return;
@@ -234,12 +301,43 @@ export class DropdownDemoApp {
     }, SIMULATED_OPTIONS_DELAY_MS);
   };
 
+  private getDropdown(id: string): Dropdown | undefined {
+    return this.dropdowns.find((dropdown) => dropdown.getState().id === id);
+  }
+
   private readonly handleResize = (): void => {
     if (!this.application) {
       return;
     }
 
-    this.application.renderer.resize(window.innerWidth, window.innerHeight);
     this.layout();
+  };
+
+  private readonly handleCanvasWheel = (event: WheelEvent): void => {
+    if (!this.application || !this.canvasElement) {
+      return;
+    }
+
+    const canvasBounds = this.canvasElement.getBoundingClientRect();
+    const globalX =
+      (event.clientX - canvasBounds.left) *
+      (this.application.screen.width / canvasBounds.width);
+    const globalY =
+      (event.clientY - canvasBounds.top) *
+      (this.application.screen.height / canvasBounds.height);
+    const deltaMultiplier =
+      event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? WHEEL_LINE_HEIGHT
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? window.innerHeight
+          : 1;
+    const deltaY = event.deltaY * deltaMultiplier;
+    const isWheelOwnedByDropdown = [...this.dropdowns]
+      .reverse()
+      .some((dropdown) => dropdown.handleWheelAt(globalX, globalY, deltaY));
+
+    if (isWheelOwnedByDropdown) {
+      event.preventDefault();
+    }
   };
 }

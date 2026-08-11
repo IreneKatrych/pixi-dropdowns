@@ -1,5 +1,6 @@
 import {
   Container,
+  type FederatedPointerEvent,
   Graphics,
   NineSlicePlane,
   Rectangle,
@@ -11,6 +12,8 @@ import { COLORS } from '../../theme/colors';
 import { TYPOGRAPHY } from '../../theme/typography';
 import { DropdownItem } from './DropdownItem';
 import { DropdownItemFactory } from './DropdownItemFactory';
+import { DropdownScrollController } from './DropdownScrollController';
+import { DropdownScrollbarView } from './DropdownScrollbarView';
 import {
   resolveDropdownLayout,
   type ResolvedDropdownLayout,
@@ -29,6 +32,7 @@ const TOGGLE_ICON_WIDTH = 12;
 const TOGGLE_ICON_HEIGHT = 6;
 const TOGGLE_ANIMATION_DURATION = 0.18;
 const LOADING_LABEL = 'Loading options…';
+const OVERSCAN_ITEM_COUNT = 2;
 
 const SKELETON_LAYOUT = {
   barWidthRatios: [0.72, 0.55, 0.72],
@@ -56,6 +60,7 @@ const FIELD_LABEL_TEXT_STYLE = new TextStyle({
 
 export class Dropdown extends Container {
   private readonly config: DropdownConfig;
+  private readonly fieldLabelOffset: number;
   private readonly header: NineSlicePlane;
   private readonly itemFactory: DropdownItemFactory;
   private readonly itemsContainer = new Container();
@@ -65,6 +70,8 @@ export class Dropdown extends Container {
   private readonly listContainer = new Container();
   private readonly listMask = new Graphics();
   private readonly listPanel: NineSlicePlane;
+  private readonly scrollController: DropdownScrollController;
+  private readonly scrollbarView: DropdownScrollbarView;
   private readonly skeletonContainer = new Container();
   private readonly toggleIndicator: Graphics;
   private readonly valueLabel: Text;
@@ -73,6 +80,9 @@ export class Dropdown extends Container {
   private isLoading: boolean;
   private isOpen = false;
   private options: DropdownOption[];
+  private scrollbarDragPointerId: number | null = null;
+  private scrollbarDragStartProgress = 0;
+  private scrollbarDragStartY = 0;
   private selectedOption: DropdownOption | null;
 
   public constructor(config: DropdownConfig, resources: DropdownResources) {
@@ -90,6 +100,13 @@ export class Dropdown extends Container {
       resources.selectionIndicatorTexture,
     );
     this.listBackgroundResource = resources.listBackground;
+    this.scrollController = new DropdownScrollController(
+      this.handleScrollChange,
+    );
+    this.scrollbarView = new DropdownScrollbarView(
+      this.layout.width,
+      this.handleScrollbarDragStart,
+    );
 
     this.header = this.createNineSlicePlane(
       resources.headerBackground,
@@ -128,10 +145,14 @@ export class Dropdown extends Container {
       this.listPanel,
       this.listViewport,
       this.listMask,
+      this.scrollbarView,
     );
+    this.listContainer.eventMode = 'static';
+    this.registerScrollEvents();
     this.listContainer.visible = this.isLoading;
 
     const headerY = this.createFieldLabel(config.label);
+    this.fieldLabelOffset = headerY;
     this.header.y += headerY;
     this.valueLabel.y += headerY;
     this.toggleIndicator.y += headerY;
@@ -171,6 +192,9 @@ export class Dropdown extends Container {
     }
 
     this.isOpen = false;
+    this.endScrollbarDrag();
+    this.scrollController.cancelDrag();
+    this.updateItemScrollGestureState(false);
     this.listContainer.visible = false;
     this.animateToggleIndicator(false);
   }
@@ -236,12 +260,49 @@ export class Dropdown extends Container {
     return this.selectedOption;
   }
 
+  public getMaximumExpandedHeight(): number {
+    const viewportHeight =
+      this.layout.maxVisibleItems * this.layout.rowHeight +
+      Math.max(0, this.layout.maxVisibleItems - 1) * this.layout.itemGap;
+
+    return (
+      this.fieldLabelOffset +
+      this.layout.rowHeight +
+      this.layout.listGap +
+      viewportHeight +
+      this.listBackgroundResource.shadowInsets.bottom
+    );
+  }
+
+  public handleWheelAt(
+    globalX: number,
+    globalY: number,
+    deltaY: number,
+  ): boolean {
+    if (!this.isOpen) {
+      return false;
+    }
+
+    const listBounds = this.listMask.getBounds();
+
+    if (!listBounds.contains(globalX, globalY)) {
+      return false;
+    }
+
+    this.scrollController.scrollBy(deltaY);
+
+    return true;
+  }
+
   public getState(): DropdownState {
     return {
       id: this.config.id,
       isOpen: this.isOpen,
       isDisabled: this.isDisabled,
       isLoading: this.isLoading,
+      optionCount: this.options.length,
+      renderedItemCount: this.itemsContainer.children.length,
+      scrollY: this.scrollController.getScrollY(),
       selectedOptionId: this.selectedOption?.id ?? null,
     };
   }
@@ -250,6 +311,8 @@ export class Dropdown extends Container {
     ..._options: Parameters<Container['destroy']>
   ): void {
     this.header.off('pointertap', this.handleHeaderTap);
+    this.unregisterScrollEvents();
+    this.scrollController.cancelDrag();
     gsap.killTweensOf(this.toggleIndicator);
     super.destroy({ children: true });
   }
@@ -264,11 +327,79 @@ export class Dropdown extends Container {
   };
 
   private readonly handleOptionSelect = (option: DropdownOption): void => {
+    if (this.scrollController.consumeSelectionBlock()) {
+      return;
+    }
+
     this.selectedOption = option;
     this.updateSelectedItemStates();
     this.updateValueLabel();
     this.config.onSelect?.({ dropdownId: this.config.id, option });
     this.close();
+  };
+
+  private readonly handlePointerCancel = (): void => {
+    this.endScrollbarDrag();
+    this.scrollController.cancelDrag();
+    this.updateItemScrollGestureState(false);
+  };
+
+  private readonly handlePointerDown = (event: FederatedPointerEvent): void => {
+    if (this.isOpen) {
+      this.scrollController.beginDrag(event.pointerId, event.global.y);
+    }
+  };
+
+  private readonly handlePointerMove = (event: FederatedPointerEvent): void => {
+    if (event.pointerId === this.scrollbarDragPointerId) {
+      const progressDelta =
+        this.scrollbarView.getTrackTravel() === 0
+          ? 0
+          : (event.global.y - this.scrollbarDragStartY) /
+            this.scrollbarView.getTrackTravel();
+      this.scrollController.scrollToProgress(
+        this.scrollbarDragStartProgress + progressDelta,
+      );
+      return;
+    }
+
+    if (this.isOpen) {
+      this.scrollController.continueDrag(event.pointerId, event.global.y);
+      this.updateItemScrollGestureState(
+        this.scrollController.isDragActive(),
+      );
+    }
+  };
+
+  private readonly handlePointerUp = (event: FederatedPointerEvent): void => {
+    if (event.pointerId === this.scrollbarDragPointerId) {
+      this.endScrollbarDrag();
+      return;
+    }
+
+    this.scrollController.endDrag(event.pointerId);
+    this.updateItemScrollGestureState(false);
+  };
+
+  private readonly handleScrollChange = (): void => {
+    this.renderVisibleOptions();
+    this.updateScrollbarThumbPosition();
+  };
+
+  private readonly handleScrollbarDragStart = (
+    pointerId: number,
+    globalY: number,
+  ): void => {
+    if (!this.isOpen || !this.scrollController.hasOverflow()) {
+      return;
+    }
+
+    this.scrollbarDragPointerId = pointerId;
+    this.scrollbarDragStartY = globalY;
+    this.scrollbarDragStartProgress =
+      this.scrollController.getScrollProgress();
+    this.scrollbarView.setDragging(true);
+    this.updateItemScrollGestureState(true);
   };
 
   private createFieldLabel(label?: string): number {
@@ -365,20 +496,64 @@ export class Dropdown extends Container {
       .forEach((child) => child.destroy());
   }
 
+  private endScrollbarDrag(): void {
+    this.scrollbarDragPointerId = null;
+    this.scrollbarView.setDragging(false);
+    this.updateItemScrollGestureState(false);
+  }
+
   private renderOptions(): void {
     this.itemsContainer.removeChildren().forEach((child) => child.destroy());
+    this.updateListViewport();
 
-    let nextY = 0;
+    const poolSize = Math.min(
+      this.options.length,
+      this.layout.maxVisibleItems + OVERSCAN_ITEM_COUNT,
+    );
 
-    for (const option of this.options) {
-      const item = this.itemFactory.create(option, this.handleOptionSelect);
-      item.setSelected(option.id === this.selectedOption?.id);
-      item.y = nextY;
-      nextY += this.layout.rowHeight + this.layout.itemGap;
-      this.itemsContainer.addChild(item);
+    for (let index = 0; index < poolSize; index += 1) {
+      this.itemsContainer.addChild(
+        this.itemFactory.create(
+          this.options[index],
+          this.handleOptionSelect,
+        ),
+      );
     }
 
-    this.updateListViewport();
+    this.renderVisibleOptions();
+  }
+
+  private renderVisibleOptions(): void {
+    const poolSize = this.itemsContainer.children.length;
+
+    if (poolSize === 0) {
+      return;
+    }
+
+    const maximumStartIndex = Math.max(0, this.options.length - poolSize);
+    const firstVisibleIndex = this.scrollController.getFirstVisibleIndex();
+    const startIndex = Math.min(
+      maximumStartIndex,
+      Math.max(0, firstVisibleIndex - 1),
+    );
+    const rowStride = this.layout.rowHeight + this.layout.itemGap;
+    const scrollY = this.scrollController.getScrollY();
+
+    this.itemsContainer.children.forEach((child, poolIndex) => {
+      if (!(child instanceof DropdownItem)) {
+        return;
+      }
+
+      const optionIndex = startIndex + poolIndex;
+      const option = this.options[optionIndex];
+
+      if (child.getOption().id !== option.id) {
+        child.setOption(option);
+      }
+
+      child.setSelected(option.id === this.selectedOption?.id);
+      child.y = optionIndex * rowStride - scrollY;
+    });
   }
 
   private resolveInitialSelection(
@@ -433,6 +608,50 @@ export class Dropdown extends Container {
     this.listMask.beginFill(0xffffff);
     this.listMask.drawRect(0, 0, this.layout.width, viewportHeight);
     this.listMask.endFill();
+    this.listContainer.hitArea = new Rectangle(
+      0,
+      0,
+      this.layout.width,
+      viewportHeight,
+    );
+    const rowStride = this.layout.rowHeight + this.layout.itemGap;
+    const contentHeight = this.isLoading
+      ? 0
+      : this.options.length * this.layout.rowHeight +
+        Math.max(0, this.options.length - 1) * this.layout.itemGap;
+    this.scrollController.configure({
+      contentHeight,
+      rowStride,
+      viewportHeight,
+    });
+    this.scrollbarView.updateLayout(
+      viewportHeight,
+      this.scrollController.getVisibleRatio(),
+      this.scrollController.hasOverflow(),
+    );
+    this.updateScrollbarThumbPosition();
+  }
+
+  private updateScrollbarThumbPosition(): void {
+    this.scrollbarView.setProgress(
+      this.scrollController.getScrollProgress(),
+    );
+  }
+
+  private registerScrollEvents(): void {
+    this.listContainer.on('pointerdown', this.handlePointerDown);
+    this.listContainer.on('globalpointermove', this.handlePointerMove);
+    this.listContainer.on('pointerup', this.handlePointerUp);
+    this.listContainer.on('pointerupoutside', this.handlePointerUp);
+    this.listContainer.on('pointercancel', this.handlePointerCancel);
+  }
+
+  private unregisterScrollEvents(): void {
+    this.listContainer.off('pointerdown', this.handlePointerDown);
+    this.listContainer.off('globalpointermove', this.handlePointerMove);
+    this.listContainer.off('pointerup', this.handlePointerUp);
+    this.listContainer.off('pointerupoutside', this.handlePointerUp);
+    this.listContainer.off('pointercancel', this.handlePointerCancel);
   }
 
   private updateLoadingPresentation(): void {
@@ -441,6 +660,14 @@ export class Dropdown extends Container {
     this.toggleIndicator.visible = !this.isLoading;
     this.listContainer.visible = this.isLoading || this.isOpen;
     this.valueLabel.alpha = this.isLoading ? 0.55 : 1;
+  }
+
+  private updateItemScrollGestureState(active: boolean): void {
+    for (const child of this.itemsContainer.children) {
+      if (child instanceof DropdownItem) {
+        child.setScrollGestureActive(active);
+      }
+    }
   }
 
   private updateSelectedItemStates(): void {

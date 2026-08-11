@@ -50,3 +50,22 @@ export function getCategoryItems(categoryId: CategoryId): DropdownOption[] {
     label,
   }));
 }
+
+export function createLargeDataset(optionCount: number): DropdownOption[] {
+  return Array.from({ length: optionCount }, (_, index) => {
+    const optionNumber = index + 1;
+    const paddedNumber = optionNumber.toString().padStart(5, '0');
+    const isBoundaryOption = optionNumber === 1 || optionNumber === optionCount;
+    const hasLongLabel = optionNumber % 10 === 0;
+
+    return {
+      id: `large-${optionNumber}`,
+      label: isBoundaryOption
+        ? `${optionNumber === 1 ? 'First' : 'Last'} option — ${paddedNumber}`
+        : hasLongLabel
+          ? `Long performance option ${paddedNumber} — Crème brûlée, полуниця та дуже довгий текст`
+          : `Performance option ${paddedNumber}`,
+      disabled: optionNumber % 25 === 0,
+    };
+  });
+}

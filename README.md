@@ -61,3 +61,7 @@ The intended coverage includes opening and closing, active and disabled selectio
 The starter project pinned Vite 5.3.1 and Playwright 1.45.0. They were updated to Vite 8.2.1 and Playwright 1.62.1 because the original versions have known security vulnerabilities reported by `npm audit`. Vite required a major update because the relevant advisories also affect the available Vite 5 and 6 releases. These are security maintenance updates to the existing toolchain, not additional application dependencies. PixiJS 7.4.2 and GSAP 3.12.5 remain at the versions specified by the assignment.
 
 The original lockfile also contained package URLs for a private registry. It was regenerated against the public npm registry so that reviewers can reproduce the installation outside the original environment.
+
+## Deliberate scope trade-offs
+
+The 10,000-option example exists to demonstrate bounded rendering and recycled item views rather than to recommend scrolling as the primary UX for a dataset of that size. A production implementation would normally add search, autocomplete, or server-side filtering. Those features are intentionally deferred because they are outside this assignment's dropdown and rendering scope.

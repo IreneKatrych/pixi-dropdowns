@@ -57,5 +57,8 @@ export interface DropdownState {
   isOpen: boolean;
   isDisabled: boolean;
   isLoading: boolean;
+  optionCount: number;
+  renderedItemCount: number;
+  scrollY: number;
   selectedOptionId: string | null;
 }
