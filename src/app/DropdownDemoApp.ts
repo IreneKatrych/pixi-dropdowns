@@ -9,10 +9,17 @@ import {
 import { Dropdown } from '../components/dropdown/Dropdown';
 import type {
   DropdownOption,
+  DropdownBounds,
+  DropdownInteractionSnapshot,
   DropdownOpenChange,
   DropdownResources,
   DropdownSelection,
 } from '../components/dropdown/types';
+import {
+  installDropdownTestBridge,
+  type DropdownSelectionTestSnapshot,
+  type DropdownTestSnapshot,
+} from '../testing/DropdownTestBridge';
 import { COLORS } from '../theme/colors';
 import { APP_CONFIG } from './appConfig';
 import {
@@ -35,6 +42,8 @@ const WHEEL_LINE_HEIGHT = 16;
 const PAIR_COLUMN_COUNT = 2;
 const SINGLE_COLUMN_COUNT = 1;
 const HORIZONTAL_PAGE_PADDING = PAGE_PADDING * 2;
+const TEST_BRIDGE_ENABLED =
+  import.meta.env.VITE_ENABLE_TEST_BRIDGE === 'true';
 
 const DROPDOWN_IDS = {
   category: 'category',
@@ -72,6 +81,9 @@ export class DropdownDemoApp {
   private dropdowns: Dropdown[] = [];
   private iconTextures: Texture[] = [];
   private panelTexture: Texture | null = null;
+  private removeTestBridge: (() => void) | null = null;
+  private selectionLog: DropdownSelectionTestSnapshot[] | null =
+    TEST_BRIDGE_ENABLED ? [] : null;
 
   public constructor(private readonly mountElement: HTMLElement) {}
 
@@ -124,6 +136,9 @@ export class DropdownDemoApp {
           width: DROPDOWN_WIDTH,
           onOpenChange: this.handleDropdownOpenChange,
           onOptionsRequest: this.handleDelayedOptionsRequest,
+          onSelect: TEST_BRIDGE_ENABLED
+            ? (selection) => this.recordSelection(selection)
+            : undefined,
         },
         resources,
       );
@@ -135,7 +150,12 @@ export class DropdownDemoApp {
           placeholder: 'Select a category',
           width: DROPDOWN_WIDTH,
           onOpenChange: this.handleDropdownOpenChange,
-          onSelect: this.handleCategorySelect,
+          onSelect: TEST_BRIDGE_ENABLED
+            ? (selection) => {
+                this.recordSelection(selection);
+                this.handleCategorySelect(selection);
+              }
+            : this.handleCategorySelect,
         },
         resources,
       );
@@ -149,6 +169,9 @@ export class DropdownDemoApp {
           width: DROPDOWN_WIDTH,
           maxVisibleItems: 5,
           onOpenChange: this.handleDropdownOpenChange,
+          onSelect: TEST_BRIDGE_ENABLED
+            ? (selection) => this.recordSelection(selection)
+            : undefined,
         },
         resources,
       );
@@ -161,6 +184,9 @@ export class DropdownDemoApp {
           width: DROPDOWN_WIDTH,
           maxVisibleItems: 5,
           onOpenChange: this.handleDropdownOpenChange,
+          onSelect: TEST_BRIDGE_ENABLED
+            ? (selection) => this.recordSelection(selection)
+            : undefined,
         },
         resources,
       );
@@ -174,6 +200,13 @@ export class DropdownDemoApp {
       application.stage.addChild(...this.dropdowns);
       this.layout();
 
+      if (TEST_BRIDGE_ENABLED) {
+        this.removeTestBridge = installDropdownTestBridge({
+          getDropdowns: () => this.getDropdownTestSnapshots(),
+          getSelections: () => this.getSelectionTestSnapshots(),
+        });
+      }
+
     } catch (error) {
       this.destroy();
       throw error;
@@ -181,6 +214,8 @@ export class DropdownDemoApp {
   }
 
   public destroy(): void {
+    this.removeTestBridge?.();
+    this.removeTestBridge = null;
     window.removeEventListener('resize', this.handleResize);
     this.application?.stage.off('pointerdown', this.handleStagePointerDown);
     this.canvasElement?.removeEventListener('wheel', this.handleCanvasWheel);
@@ -207,6 +242,7 @@ export class DropdownDemoApp {
 
     this.application?.destroy(true, { children: true });
     this.application = null;
+    this.selectionLog = null;
   }
 
   private createBackgroundResource(texture: Texture) {
@@ -304,6 +340,86 @@ export class DropdownDemoApp {
     itemsDropdown.clearSelection();
     itemsDropdown.setDisabled(false);
   };
+
+  private recordSelection(selection: DropdownSelection): void {
+    this.selectionLog?.push({
+      dropdownId: selection.dropdownId,
+      optionId: selection.option.id,
+      optionLabel: selection.option.label,
+      hasIcon: Boolean(selection.option.icon),
+    });
+  }
+
+  private getDropdownTestSnapshots(): DropdownTestSnapshot[] {
+    if (!this.application || !this.canvasElement) {
+      return [];
+    }
+
+    const canvasBounds = this.canvasElement.getBoundingClientRect();
+    const scaleX = canvasBounds.width / this.application.screen.width;
+    const scaleY = canvasBounds.height / this.application.screen.height;
+
+    return this.dropdowns.map((dropdown) =>
+      this.toClientSnapshot(
+        dropdown.getInteractionSnapshot(),
+        canvasBounds,
+        scaleX,
+        scaleY,
+      ),
+    );
+  }
+
+  private getSelectionTestSnapshots(): DropdownSelectionTestSnapshot[] {
+    return this.selectionLog?.map((selection) => ({ ...selection })) ?? [];
+  }
+
+  private toClientSnapshot(
+    snapshot: DropdownInteractionSnapshot,
+    canvasBounds: DOMRect,
+    scaleX: number,
+    scaleY: number,
+  ): DropdownTestSnapshot {
+    return {
+      state: { ...snapshot.state },
+      headerBounds: this.toClientBounds(
+        snapshot.headerBounds,
+        canvasBounds,
+        scaleX,
+        scaleY,
+      ),
+      listBounds: snapshot.listBounds
+        ? this.toClientBounds(
+            snapshot.listBounds,
+            canvasBounds,
+            scaleX,
+            scaleY,
+          )
+        : null,
+      visibleOptions: snapshot.visibleOptions.map((option) => ({
+        ...option,
+        bounds: this.toClientBounds(
+          option.bounds,
+          canvasBounds,
+          scaleX,
+          scaleY,
+        ),
+      })),
+    };
+  }
+
+  private toClientBounds(
+    bounds: DropdownBounds,
+    canvasBounds: DOMRect,
+    scaleX: number,
+    scaleY: number,
+  ): DropdownBounds {
+    return {
+      x: canvasBounds.left + bounds.x * scaleX,
+      y: canvasBounds.top + bounds.y * scaleY,
+      width: bounds.width * scaleX,
+      height: bounds.height * scaleY,
+    };
+  }
 
   private readonly handleDelayedOptionsRequest = async (): Promise<void> => {
     const delayedDropdown = this.getDropdown(DROPDOWN_IDS.delayedOptions);

@@ -66,8 +66,31 @@ export interface DropdownState {
   isOpen: boolean;
   isDisabled: boolean;
   isLoading: boolean;
+  isListInteractive: boolean;
   optionCount: number;
   renderedItemCount: number;
   scrollY: number;
   selectedOptionId: string | null;
+  selectedOptionHasIcon: boolean;
+}
+
+export interface DropdownBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface DropdownVisibleOptionSnapshot {
+  optionId: string;
+  disabled: boolean;
+  hasIcon: boolean;
+  bounds: DropdownBounds;
+}
+
+export interface DropdownInteractionSnapshot {
+  state: DropdownState;
+  headerBounds: DropdownBounds;
+  listBounds: DropdownBounds | null;
+  visibleOptions: DropdownVisibleOptionSnapshot[];
 }

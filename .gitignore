@@ -10,6 +10,7 @@ blob-report/
 .env
 .env.*
 !.env.example
+!.env.test
 *.log
 
 # IDE and OS files

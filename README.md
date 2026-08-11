@@ -48,6 +48,7 @@ npx playwright install chromium
 | Command | Purpose |
 | --- | --- |
 | `npm run dev` | Start the Vite development server |
+| `npm run dev:test` | Start the isolated test-mode server with the runtime bridge |
 | `npm run typecheck` | Validate TypeScript without emitting files |
 | `npm run build` | Run type checking and create a production build |
 | `npm run test:e2e` | Run the Playwright test suite in Chromium |
@@ -57,6 +58,8 @@ npx playwright install chromium
 The core dropdown behavior is covered with Playwright. Because the UI is rendered on a canvas, tests use an explicit runtime test contract to discover component state and interactive bounds instead of relying on fragile, hardcoded X/Y coordinates. Pointer actions still target the real canvas so the tests exercise the same interaction path as a user.
 
 The intended coverage includes opening and closing, active and disabled selection, outside clicks, icon options, loading behavior, emitted selection data, and coordination between dropdown instances.
+
+Playwright runs the application on a separate test-mode port. In that mode, a small typed runtime bridge exposes fresh dropdown state, emitted selections, and current interactive bounds converted to browser viewport coordinates. Tests still perform real pointer actions on the canvas; the bridge is observational and is removed during application teardown. The bridge flag is absent from the normal production build, so this test surface is not shipped to reviewers as application functionality.
 
 ## Dependency security note
 

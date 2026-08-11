@@ -1,5 +1,6 @@
 import {
   Container,
+  type DisplayObject,
   type FederatedPointerEvent,
   Graphics,
   NineSlicePlane,
@@ -27,6 +28,8 @@ import type {
   DropdownBackgroundResource,
   DropdownConfig,
   DropdownContentState,
+  DropdownBounds,
+  DropdownInteractionSnapshot,
   DropdownOption,
   DropdownResources,
   DropdownState,
@@ -412,10 +415,36 @@ export class Dropdown extends Container {
       isOpen: this.isOpen,
       isDisabled: this.isDisabled,
       isLoading: this.isLoading,
+      isListInteractive: this.listContainer.eventMode === 'static',
       optionCount: this.options.length,
       renderedItemCount: this.itemsContainer.children.length,
       scrollY: this.scrollController.getScrollY(),
       selectedOptionId: this.selectedOption?.id ?? null,
+      selectedOptionHasIcon: Boolean(this.selectedOption?.icon),
+    };
+  }
+
+  public getInteractionSnapshot(): DropdownInteractionSnapshot {
+    const headerBounds = this.getTransformedBounds(
+      this.header,
+      this.header.hitArea as Rectangle,
+    );
+    const listBounds = this.listContainer.visible
+      ? this.getTransformedBounds(
+          this.listContainer,
+          this.listContainer.hitArea as Rectangle,
+        )
+      : null;
+    const visibleOptions =
+      listBounds && this.itemsContainer.visible
+        ? this.getVisibleOptionSnapshots(listBounds)
+        : [];
+
+    return {
+      state: this.getState(),
+      headerBounds,
+      listBounds,
+      visibleOptions,
     };
   }
 
@@ -544,6 +573,78 @@ export class Dropdown extends Container {
     this.addChild(fieldLabel);
 
     return fieldLabel.height + this.layout.labelGap;
+  }
+
+  private getTransformedBounds(
+    displayObject: DisplayObject,
+    localBounds: Rectangle,
+  ): DropdownBounds {
+    const topLeft = displayObject.toGlobal(
+      new Point(localBounds.x, localBounds.y),
+    );
+    const bottomRight = displayObject.toGlobal(
+      new Point(localBounds.right, localBounds.bottom),
+    );
+
+    return {
+      x: Math.min(topLeft.x, bottomRight.x),
+      y: Math.min(topLeft.y, bottomRight.y),
+      width: Math.abs(bottomRight.x - topLeft.x),
+      height: Math.abs(bottomRight.y - topLeft.y),
+    };
+  }
+
+  private getVisibleOptionSnapshots(
+    listBounds: DropdownBounds,
+  ): DropdownInteractionSnapshot['visibleOptions'] {
+    const snapshots: DropdownInteractionSnapshot['visibleOptions'] = [];
+
+    for (const child of this.itemsContainer.children) {
+      if (!(child instanceof DropdownItem)) {
+        continue;
+      }
+
+      const itemBounds = this.getTransformedBounds(
+        child,
+        child.hitArea as Rectangle,
+      );
+      const clippedBounds = this.intersectBounds(itemBounds, listBounds);
+
+      if (!clippedBounds) {
+        continue;
+      }
+
+      const option = child.getOption();
+      snapshots.push({
+        optionId: option.id,
+        disabled: option.disabled ?? false,
+        hasIcon: Boolean(option.icon),
+        bounds: clippedBounds,
+      });
+    }
+
+    return snapshots;
+  }
+
+  private intersectBounds(
+    first: DropdownBounds,
+    second: DropdownBounds,
+  ): DropdownBounds | null {
+    const left = Math.max(first.x, second.x);
+    const top = Math.max(first.y, second.y);
+    const right = Math.min(first.x + first.width, second.x + second.width);
+    const bottom = Math.min(first.y + first.height, second.y + second.height);
+
+    if (right <= left || bottom <= top) {
+      return null;
+    }
+
+    return {
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    };
   }
 
   private notifyOpenChange(): void {

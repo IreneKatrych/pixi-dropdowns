@@ -13,16 +13,16 @@ export default defineConfig({
   reporter: [['html', { open: 'never' }], ['list']],
 
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:4173',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
 
   /* Automatically starts the Vite dev server before running tests */
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env['CI'],
+    command: 'npm run dev:test',
+    url: 'http://localhost:4173',
+    reuseExistingServer: false,
     timeout: 15_000,
   },
 
