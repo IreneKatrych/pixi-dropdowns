@@ -31,6 +31,8 @@ const DEFAULT_PLACEHOLDER = 'Select an option';
 const TOGGLE_ICON_WIDTH = 12;
 const TOGGLE_ICON_HEIGHT = 6;
 const TOGGLE_ANIMATION_DURATION = 0.18;
+const LIST_ANIMATION_DURATION = 0.2;
+const LIST_CLOSED_OFFSET_Y = -6;
 const LOADING_LABEL = 'Loading options…';
 const OVERSCAN_ITEM_COUNT = 2;
 
@@ -67,9 +69,11 @@ export class Dropdown extends Container {
   private readonly listViewport = new Container();
   private readonly layout: ResolvedDropdownLayout;
   private readonly listBackgroundResource: DropdownBackgroundResource;
+  private readonly listAnimationContainer = new Container();
   private readonly listContainer = new Container();
   private readonly listMask = new Graphics();
   private readonly listPanel: NineSlicePlane;
+  private readonly openCloseTimeline: gsap.core.Timeline;
   private readonly scrollController: DropdownScrollController;
   private readonly scrollbarView: DropdownScrollbarView;
   private readonly skeletonContainer = new Container();
@@ -141,13 +145,14 @@ export class Dropdown extends Container {
     );
     this.listViewport.mask = this.listMask;
     this.listViewport.addChild(this.itemsContainer, this.skeletonContainer);
-    this.listContainer.addChild(
+    this.listAnimationContainer.addChild(
       this.listPanel,
       this.listViewport,
       this.listMask,
       this.scrollbarView,
     );
-    this.listContainer.eventMode = 'static';
+    this.listContainer.addChild(this.listAnimationContainer);
+    this.listContainer.eventMode = 'none';
     this.registerScrollEvents();
     this.listContainer.visible = this.isLoading;
 
@@ -158,6 +163,7 @@ export class Dropdown extends Container {
     this.toggleIndicator.y += headerY;
     this.listContainer.y =
       headerY + this.layout.rowHeight + this.layout.listGap;
+    this.openCloseTimeline = this.createOpenCloseTimeline();
 
     this.addChild(
       this.header,
@@ -171,6 +177,8 @@ export class Dropdown extends Container {
     this.renderOptions();
     if (this.isLoading) {
       this.renderSkeleton();
+      this.listContainer.visible = true;
+      this.openCloseTimeline.progress(1);
     }
     this.updateLoadingPresentation();
     this.alpha = this.isDisabled ? 0.55 : 1;
@@ -183,7 +191,8 @@ export class Dropdown extends Container {
 
     this.isOpen = true;
     this.listContainer.visible = true;
-    this.animateToggleIndicator(true);
+    this.updateListInteraction();
+    this.openCloseTimeline.play();
   }
 
   public close(): void {
@@ -195,8 +204,8 @@ export class Dropdown extends Container {
     this.endScrollbarDrag();
     this.scrollController.cancelDrag();
     this.updateItemScrollGestureState(false);
-    this.listContainer.visible = false;
-    this.animateToggleIndicator(false);
+    this.updateListInteraction();
+    this.openCloseTimeline.reverse();
   }
 
   public toggle(): void {
@@ -226,7 +235,6 @@ export class Dropdown extends Container {
     }
 
     this.isLoading = loading;
-    this.close();
 
     if (loading && this.skeletonContainer.children.length === 0) {
       this.renderSkeleton();
@@ -238,6 +246,17 @@ export class Dropdown extends Container {
     this.updateValueLabel();
     this.updateListViewport();
     this.updateLoadingPresentation();
+
+    if (loading) {
+      this.listContainer.visible = true;
+      this.openCloseTimeline.play();
+    } else {
+      this.isOpen = true;
+      this.listContainer.visible = true;
+      this.openCloseTimeline.play();
+    }
+
+    this.updateListInteraction();
   }
 
   public setDisabled(disabled: boolean): void {
@@ -313,7 +332,7 @@ export class Dropdown extends Container {
     this.header.off('pointertap', this.handleHeaderTap);
     this.unregisterScrollEvents();
     this.scrollController.cancelDrag();
-    gsap.killTweensOf(this.toggleIndicator);
+    this.openCloseTimeline.kill();
     super.destroy({ children: true });
   }
 
@@ -324,6 +343,16 @@ export class Dropdown extends Container {
     }
 
     this.toggle();
+  };
+
+  private readonly handleCloseAnimationComplete = (): void => {
+    if (!this.isOpen && !this.isLoading) {
+      this.listContainer.visible = false;
+    }
+  };
+
+  private readonly handleOpenAnimationComplete = (): void => {
+    this.updateListInteraction();
   };
 
   private readonly handleOptionSelect = (option: DropdownOption): void => {
@@ -416,13 +445,38 @@ export class Dropdown extends Container {
     return fieldLabel.height + this.layout.labelGap;
   }
 
-  private animateToggleIndicator(isOpen: boolean): void {
-    gsap.to(this.toggleIndicator, {
-      rotation: isOpen ? Math.PI : 0,
-      duration: TOGGLE_ANIMATION_DURATION,
-      ease: 'power2.out',
-      overwrite: true,
+  private createOpenCloseTimeline(): gsap.core.Timeline {
+    gsap.set(this.listAnimationContainer, {
+      alpha: 0,
+      y: LIST_CLOSED_OFFSET_Y,
     });
+    gsap.set(this.toggleIndicator, { rotation: 0 });
+
+    return gsap
+      .timeline({
+        paused: true,
+        onComplete: this.handleOpenAnimationComplete,
+        onReverseComplete: this.handleCloseAnimationComplete,
+      })
+      .to(
+        this.listAnimationContainer,
+        {
+          alpha: 1,
+          y: 0,
+          duration: LIST_ANIMATION_DURATION,
+          ease: 'power2.out',
+        },
+        0,
+      )
+      .to(
+        this.toggleIndicator,
+        {
+          rotation: Math.PI,
+          duration: TOGGLE_ANIMATION_DURATION,
+          ease: 'power2.out',
+        },
+        0,
+      );
   }
 
   private createNineSlicePlane(
@@ -658,8 +712,15 @@ export class Dropdown extends Container {
     this.itemsContainer.visible = !this.isLoading;
     this.skeletonContainer.visible = this.isLoading;
     this.toggleIndicator.visible = !this.isLoading;
-    this.listContainer.visible = this.isLoading || this.isOpen;
     this.valueLabel.alpha = this.isLoading ? 0.55 : 1;
+  }
+
+  private updateListInteraction(): void {
+    const isInteractive =
+      this.isOpen &&
+      !this.isLoading &&
+      this.openCloseTimeline.progress() === 1;
+    this.listContainer.eventMode = isInteractive ? 'static' : 'none';
   }
 
   private updateItemScrollGestureState(active: boolean): void {

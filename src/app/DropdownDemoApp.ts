@@ -296,7 +296,6 @@ export class DropdownDemoApp {
     this.delayedOptionsTimer = window.setTimeout(() => {
       delayedDropdown.setOptions(DELAYED_OPTIONS);
       delayedDropdown.setLoading(false);
-      delayedDropdown.open();
       this.delayedOptionsTimer = null;
     }, SIMULATED_OPTIONS_DELAY_MS);
   };
