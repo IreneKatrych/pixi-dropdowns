@@ -13,6 +13,7 @@ import { COLORS } from '../../theme/colors';
 import { TYPOGRAPHY } from '../../theme/typography';
 import type { ResolvedDropdownLayout } from './dropdownLayout';
 import { fitTextWithEllipsis } from './textLayout';
+import { fitSpriteWithin } from './spriteLayout';
 import type { DropdownOption } from './types';
 
 export type DropdownItemSelectHandler = (option: DropdownOption) => void;
@@ -97,12 +98,11 @@ export class DropdownItem extends Container {
 
     if (option.icon) {
       this.icon = new Sprite(option.icon);
-      this.icon.width = this.layout.iconSize;
-      this.icon.height = this.layout.iconSize;
-      this.icon.x = contentX;
+      fitSpriteWithin(this.icon, this.layout.iconSize, this.layout.iconSize);
+      this.icon.x = contentX + (this.layout.iconSize - this.icon.width) / 2;
       this.icon.y = (this.layout.rowHeight - this.icon.height) / 2;
-      contentX += this.icon.width + this.layout.contentGap;
-      availableTextWidth -= this.icon.width + this.layout.contentGap;
+      contentX += this.layout.iconSize + this.layout.contentGap;
+      availableTextWidth -= this.layout.iconSize + this.layout.contentGap;
       this.addChildAt(this.icon, 1);
     }
 

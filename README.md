@@ -67,3 +67,5 @@ The original lockfile also contained package URLs for a private registry. It was
 ## Deliberate scope trade-offs
 
 The 10,000-option example exists to demonstrate bounded rendering and recycled item views rather than to recommend scrolling as the primary UX for a dataset of that size. A production implementation would normally add search, autocomplete, or server-side filtering. Those features are intentionally deferred because they are outside this assignment's dropdown and rendering scope.
+
+A dedicated clear-selection button is also intentionally deferred. The public API already supports clearing a selection programmatically, while an additional header control would require its own touch target, interaction states, layout rules, and test coverage beyond the assignment requirements.

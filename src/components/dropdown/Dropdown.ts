@@ -5,6 +5,7 @@ import {
   NineSlicePlane,
   Point,
   Rectangle,
+  Sprite,
   Text,
   TextStyle,
 } from 'pixi.js';
@@ -21,6 +22,7 @@ import {
   type ResolvedDropdownLayout,
 } from './dropdownLayout';
 import { fitTextWithEllipsis } from './textLayout';
+import { fitSpriteWithin } from './spriteLayout';
 import type {
   DropdownBackgroundResource,
   DropdownConfig,
@@ -89,6 +91,7 @@ export class Dropdown extends Container {
   private readonly skeletonContainer = new Container();
   private readonly statusView: DropdownStatusView;
   private readonly toggleIndicator: Graphics;
+  private readonly valueIcon: Sprite;
   private readonly valueLabel: Text;
 
   private isDisabled: boolean;
@@ -143,6 +146,11 @@ export class Dropdown extends Container {
     );
     this.header.on('pointertap', this.handleHeaderTap);
 
+    this.valueIcon = new Sprite();
+    this.valueIcon.eventMode = 'none';
+    this.valueIcon.y = (this.layout.rowHeight - this.layout.iconSize) / 2;
+    this.valueIcon.visible = false;
+
     this.valueLabel = new Text('', VALUE_TEXT_STYLE);
     this.valueLabel.eventMode = 'none';
     this.valueLabel.x = this.layout.horizontalPadding;
@@ -186,6 +194,7 @@ export class Dropdown extends Container {
     const headerY = this.createFieldLabel(config.label);
     this.fieldLabelOffset = headerY;
     this.header.y += headerY;
+    this.valueIcon.y += headerY;
     this.valueLabel.y += headerY;
     this.toggleIndicator.y += headerY;
     this.listContainer.y =
@@ -194,6 +203,7 @@ export class Dropdown extends Container {
 
     this.addChild(
       this.header,
+      this.valueIcon,
       this.valueLabel,
       this.toggleIndicator,
       this.listContainer,
@@ -862,10 +872,39 @@ export class Dropdown extends Container {
           : (this.selectedOption?.label ??
             this.config.placeholder ??
             DEFAULT_PLACEHOLDER);
+    const hasSelectedIcon =
+      this.contentState === 'ready' && Boolean(this.selectedOption?.icon);
+    const contentX = hasSelectedIcon
+      ? this.layout.horizontalPadding +
+        this.layout.iconSize +
+        this.layout.contentGap
+      : this.layout.horizontalPadding;
+    const iconAndGapWidth = hasSelectedIcon
+      ? this.layout.iconSize + this.layout.contentGap
+      : 0;
     const availableWidth =
       this.layout.width -
       this.layout.horizontalPadding * 2 -
-      this.layout.toggleIndicatorAreaWidth;
+      this.layout.toggleIndicatorAreaWidth -
+      iconAndGapWidth;
+
+    if (this.selectedOption?.icon) {
+      this.valueIcon.texture = this.selectedOption.icon;
+      fitSpriteWithin(
+        this.valueIcon,
+        this.layout.iconSize,
+        this.layout.iconSize,
+      );
+      this.valueIcon.x =
+        this.layout.horizontalPadding +
+        (this.layout.iconSize - this.valueIcon.width) / 2;
+      this.valueIcon.y =
+        this.fieldLabelOffset +
+        (this.layout.rowHeight - this.valueIcon.height) / 2;
+    }
+
+    this.valueIcon.visible = hasSelectedIcon;
+    this.valueLabel.x = contentX;
 
     this.valueLabel.text = fitTextWithEllipsis(
       value,
@@ -874,6 +913,9 @@ export class Dropdown extends Container {
     );
     this.valueLabel.style =
       this.contentState === 'error' ? ERROR_TEXT_STYLE : VALUE_TEXT_STYLE;
+    this.valueLabel.y =
+      this.fieldLabelOffset +
+      (this.layout.rowHeight - this.valueLabel.height) / 2;
   }
 
   private validateOptions(options: DropdownOption[]): void {
