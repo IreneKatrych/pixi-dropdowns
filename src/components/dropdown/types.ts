@@ -12,6 +12,11 @@ export interface DropdownSelection {
   option: DropdownOption;
 }
 
+export interface DropdownOpenChange {
+  dropdownId: string;
+  isOpen: boolean;
+}
+
 export interface DropdownConfig {
   id: string;
   options: DropdownOption[];
@@ -23,6 +28,7 @@ export interface DropdownConfig {
   width?: number;
   maxVisibleItems?: number;
   onOptionsRequest?: () => void;
+  onOpenChange?: (change: DropdownOpenChange) => void;
   onSelect?: (selection: DropdownSelection) => void;
 }
 

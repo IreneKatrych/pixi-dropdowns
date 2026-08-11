@@ -1,7 +1,15 @@
-import { Application, Assets, Graphics, Texture } from 'pixi.js';
+import {
+  Application,
+  Assets,
+  type FederatedPointerEvent,
+  Graphics,
+  Rectangle,
+  Texture,
+} from 'pixi.js';
 import { Dropdown } from '../components/dropdown/Dropdown';
 import type {
   DropdownOption,
+  DropdownOpenChange,
   DropdownResources,
   DropdownSelection,
 } from '../components/dropdown/types';
@@ -89,6 +97,8 @@ export class DropdownDemoApp {
     this.canvasElement.addEventListener('wheel', this.handleCanvasWheel, {
       passive: false,
     });
+    application.stage.eventMode = 'static';
+    application.stage.on('pointerdown', this.handleStagePointerDown);
     window.addEventListener('resize', this.handleResize);
 
     try {
@@ -111,6 +121,7 @@ export class DropdownDemoApp {
           label: 'Loaded from API',
           placeholder: 'Select an option',
           width: DROPDOWN_WIDTH,
+          onOpenChange: this.handleDropdownOpenChange,
           onOptionsRequest: this.handleDelayedOptionsRequest,
         },
         resources,
@@ -122,6 +133,7 @@ export class DropdownDemoApp {
           label: 'Category with icons',
           placeholder: 'Select a category',
           width: DROPDOWN_WIDTH,
+          onOpenChange: this.handleDropdownOpenChange,
           onSelect: this.handleCategorySelect,
         },
         resources,
@@ -135,6 +147,7 @@ export class DropdownDemoApp {
           disabled: true,
           width: DROPDOWN_WIDTH,
           maxVisibleItems: 5,
+          onOpenChange: this.handleDropdownOpenChange,
         },
         resources,
       );
@@ -146,6 +159,7 @@ export class DropdownDemoApp {
           placeholder: 'Select a performance option',
           width: DROPDOWN_WIDTH,
           maxVisibleItems: 5,
+          onOpenChange: this.handleDropdownOpenChange,
         },
         resources,
       );
@@ -167,6 +181,7 @@ export class DropdownDemoApp {
 
   public destroy(): void {
     window.removeEventListener('resize', this.handleResize);
+    this.application?.stage.off('pointerdown', this.handleStagePointerDown);
     this.canvasElement?.removeEventListener('wheel', this.handleCanvasWheel);
     this.canvasElement = null;
 
@@ -269,6 +284,12 @@ export class DropdownDemoApp {
       screenWidth,
       Math.max(window.innerHeight, Math.ceil(requiredHeight)),
     );
+    this.application.stage.hitArea = new Rectangle(
+      0,
+      0,
+      this.application.screen.width,
+      this.application.screen.height,
+    );
   }
 
   private readonly handleCategorySelect = (
@@ -300,8 +321,36 @@ export class DropdownDemoApp {
     }, SIMULATED_OPTIONS_DELAY_MS);
   };
 
+  private readonly handleDropdownOpenChange = (
+    change: DropdownOpenChange,
+  ): void => {
+    if (change.isOpen) {
+      this.closeAllDropdowns(change.dropdownId);
+    }
+  };
+
+  private readonly handleStagePointerDown = (
+    event: FederatedPointerEvent,
+  ): void => {
+    const isInsideDropdown = this.dropdowns.some((dropdown) =>
+      dropdown.containsGlobalPoint(event.global.x, event.global.y),
+    );
+
+    if (!isInsideDropdown) {
+      this.closeAllDropdowns();
+    }
+  };
+
   private getDropdown(id: string): Dropdown | undefined {
     return this.dropdowns.find((dropdown) => dropdown.getState().id === id);
+  }
+
+  private closeAllDropdowns(exceptDropdownId?: string): void {
+    for (const dropdown of this.dropdowns) {
+      if (dropdown.getState().id !== exceptDropdownId) {
+        dropdown.close();
+      }
+    }
   }
 
   private readonly handleResize = (): void => {

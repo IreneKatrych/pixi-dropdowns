@@ -3,6 +3,7 @@ import {
   type FederatedPointerEvent,
   Graphics,
   NineSlicePlane,
+  Point,
   Rectangle,
   Text,
   TextStyle,
@@ -82,7 +83,7 @@ export class Dropdown extends Container {
 
   private isDisabled: boolean;
   private isLoading: boolean;
-  private isOpen = false;
+  private isOpen: boolean;
   private options: DropdownOption[];
   private scrollbarDragPointerId: number | null = null;
   private scrollbarDragStartProgress = 0;
@@ -98,6 +99,7 @@ export class Dropdown extends Container {
     this.validateOptions(this.options);
     this.isDisabled = config.disabled ?? false;
     this.isLoading = config.loading ?? false;
+    this.isOpen = this.isLoading;
     this.selectedOption = this.resolveInitialSelection(config.selectedOptionId);
     this.itemFactory = new DropdownItemFactory(
       this.layout,
@@ -125,10 +127,12 @@ export class Dropdown extends Container {
     this.header.on('pointertap', this.handleHeaderTap);
 
     this.valueLabel = new Text('', VALUE_TEXT_STYLE);
+    this.valueLabel.eventMode = 'none';
     this.valueLabel.x = this.layout.horizontalPadding;
     this.valueLabel.y = (this.layout.rowHeight - this.valueLabel.height) / 2;
 
     this.toggleIndicator = this.createToggleIndicator();
+    this.toggleIndicator.eventMode = 'none';
     this.toggleIndicator.pivot.set(
       TOGGLE_ICON_WIDTH / 2,
       TOGGLE_ICON_HEIGHT / 2,
@@ -185,11 +189,12 @@ export class Dropdown extends Container {
   }
 
   public open(): void {
-    if (this.isDisabled || this.isLoading || this.isOpen) {
+    if (this.isDisabled || this.isOpen) {
       return;
     }
 
     this.isOpen = true;
+    this.notifyOpenChange();
     this.listContainer.visible = true;
     this.updateListInteraction();
     this.openCloseTimeline.play();
@@ -201,6 +206,7 @@ export class Dropdown extends Container {
     }
 
     this.isOpen = false;
+    this.notifyOpenChange();
     this.endScrollbarDrag();
     this.scrollController.cancelDrag();
     this.updateItemScrollGestureState(false);
@@ -248,12 +254,18 @@ export class Dropdown extends Container {
     this.updateLoadingPresentation();
 
     if (loading) {
+      if (!this.isOpen) {
+        this.isOpen = true;
+        this.notifyOpenChange();
+      }
+
+      this.listContainer.visible = true;
+      this.openCloseTimeline.play();
+    } else if (this.isOpen) {
       this.listContainer.visible = true;
       this.openCloseTimeline.play();
     } else {
-      this.isOpen = true;
-      this.listContainer.visible = true;
-      this.openCloseTimeline.play();
+      this.openCloseTimeline.reverse();
     }
 
     this.updateListInteraction();
@@ -290,6 +302,29 @@ export class Dropdown extends Container {
       this.layout.listGap +
       viewportHeight +
       this.listBackgroundResource.shadowInsets.bottom
+    );
+  }
+
+  public containsGlobalPoint(globalX: number, globalY: number): boolean {
+    const globalPoint = new Point(globalX, globalY);
+    const headerPoint = this.header.toLocal(globalPoint);
+    const isInsideHeader = this.header.hitArea?.contains(
+      headerPoint.x,
+      headerPoint.y,
+    );
+
+    if (isInsideHeader && !this.isDisabled) {
+      return true;
+    }
+
+    if (!this.listContainer.visible) {
+      return false;
+    }
+
+    const listPoint = this.listContainer.toLocal(globalPoint);
+
+    return (
+      this.listContainer.hitArea?.contains(listPoint.x, listPoint.y) ?? false
     );
   }
 
@@ -337,6 +372,11 @@ export class Dropdown extends Container {
   }
 
   private readonly handleHeaderTap = (): void => {
+    if (this.isLoading) {
+      this.toggle();
+      return;
+    }
+
     if (this.options.length === 0 && this.config.onOptionsRequest) {
       this.config.onOptionsRequest();
       return;
@@ -346,7 +386,7 @@ export class Dropdown extends Container {
   };
 
   private readonly handleCloseAnimationComplete = (): void => {
-    if (!this.isOpen && !this.isLoading) {
+    if (!this.isOpen) {
       this.listContainer.visible = false;
     }
   };
@@ -443,6 +483,13 @@ export class Dropdown extends Container {
     this.addChild(fieldLabel);
 
     return fieldLabel.height + this.layout.labelGap;
+  }
+
+  private notifyOpenChange(): void {
+    this.config.onOpenChange?.({
+      dropdownId: this.config.id,
+      isOpen: this.isOpen,
+    });
   }
 
   private createOpenCloseTimeline(): gsap.core.Timeline {
@@ -637,7 +684,7 @@ export class Dropdown extends Container {
   }
 
   private updateHeaderInteraction(): void {
-    const isInteractive = !this.isDisabled && !this.isLoading;
+    const isInteractive = !this.isDisabled;
     this.header.eventMode = isInteractive ? 'static' : 'none';
     this.header.cursor = isInteractive ? 'pointer' : 'default';
   }
@@ -711,7 +758,6 @@ export class Dropdown extends Container {
   private updateLoadingPresentation(): void {
     this.itemsContainer.visible = !this.isLoading;
     this.skeletonContainer.visible = this.isLoading;
-    this.toggleIndicator.visible = !this.isLoading;
     this.valueLabel.alpha = this.isLoading ? 0.55 : 1;
   }
 
