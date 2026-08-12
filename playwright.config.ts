@@ -20,7 +20,7 @@ export default defineConfig({
 
   /* Automatically starts the Vite dev server before running tests */
   webServer: {
-    command: 'npm run dev:test',
+    command: 'node node_modules/vite/bin/vite.js --mode test --port 4173',
     url: 'http://localhost:4173',
     reuseExistingServer: false,
     timeout: 15_000,

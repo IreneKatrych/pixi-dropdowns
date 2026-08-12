@@ -72,6 +72,9 @@ export interface DropdownState {
   scrollY: number;
   selectedOptionId: string | null;
   selectedOptionHasIcon: boolean;
+  isValueIconVisible: boolean;
+  valueText: string;
+  isValueTruncated: boolean;
 }
 
 export interface DropdownBounds {
@@ -92,5 +95,6 @@ export interface DropdownInteractionSnapshot {
   state: DropdownState;
   headerBounds: DropdownBounds;
   listBounds: DropdownBounds | null;
+  scrollbarThumbBounds: DropdownBounds | null;
   visibleOptions: DropdownVisibleOptionSnapshot[];
 }

@@ -44,6 +44,9 @@ const SINGLE_COLUMN_COUNT = 1;
 const HORIZONTAL_PAGE_PADDING = PAGE_PADDING * 2;
 const TEST_BRIDGE_ENABLED =
   import.meta.env.VITE_ENABLE_TEST_BRIDGE === 'true';
+const EMPTY_DELAYED_RESPONSE_ENABLED =
+  TEST_BRIDGE_ENABLED &&
+  new URLSearchParams(window.location.search).get('delayedResponse') === 'empty';
 
 const DROPDOWN_IDS = {
   category: 'category',
@@ -204,6 +207,8 @@ export class DropdownDemoApp {
         this.removeTestBridge = installDropdownTestBridge({
           getDropdowns: () => this.getDropdownTestSnapshots(),
           getSelections: () => this.getSelectionTestSnapshots(),
+          getDelayedOptionsRequestCount: () =>
+            this.delayedOptionsRequestCount,
         });
       }
 
@@ -395,6 +400,14 @@ export class DropdownDemoApp {
             scaleY,
           )
         : null,
+      scrollbarThumbBounds: snapshot.scrollbarThumbBounds
+        ? this.toClientBounds(
+            snapshot.scrollbarThumbBounds,
+            canvasBounds,
+            scaleX,
+            scaleY,
+          )
+        : null,
       visibleOptions: snapshot.visibleOptions.map((option) => ({
         ...option,
         bounds: this.toClientBounds(
@@ -436,14 +449,17 @@ export class DropdownDemoApp {
     try {
       await this.simulateOptionsRequest(
         abortController.signal,
-        this.delayedOptionsRequestCount === 1,
+        this.delayedOptionsRequestCount === 1 &&
+          !EMPTY_DELAYED_RESPONSE_ENABLED,
       );
 
       if (abortController.signal.aborted) {
         return;
       }
 
-      delayedDropdown.setOptions(DELAYED_OPTIONS);
+      delayedDropdown.setOptions(
+        EMPTY_DELAYED_RESPONSE_ENABLED ? [] : DELAYED_OPTIONS,
+      );
     } catch (error) {
       if (!abortController.signal.aborted) {
         delayedDropdown.setLoadError();

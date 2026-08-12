@@ -8,6 +8,7 @@ export interface DropdownTestSnapshot {
   state: DropdownState;
   headerBounds: DropdownBounds;
   listBounds: DropdownBounds | null;
+  scrollbarThumbBounds: DropdownBounds | null;
   visibleOptions: DropdownVisibleOptionSnapshot[];
 }
 
@@ -22,11 +23,13 @@ export interface DropdownTestBridge {
   getDropdown(id: string): DropdownTestSnapshot | null;
   getDropdowns(): DropdownTestSnapshot[];
   getSelections(): DropdownSelectionTestSnapshot[];
+  getDelayedOptionsRequestCount(): number;
 }
 
 export interface DropdownTestBridgeSource {
   getDropdowns(): DropdownTestSnapshot[];
   getSelections(): DropdownSelectionTestSnapshot[];
+  getDelayedOptionsRequestCount(): number;
 }
 
 declare global {
@@ -44,6 +47,8 @@ export function installDropdownTestBridge(
       null,
     getDropdowns: () => source.getDropdowns(),
     getSelections: () => source.getSelections(),
+    getDelayedOptionsRequestCount: () =>
+      source.getDelayedOptionsRequestCount(),
   });
 
   window.__PIXI_DROPDOWN_TEST__ = bridge;

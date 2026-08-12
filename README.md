@@ -61,6 +61,10 @@ The intended coverage includes opening and closing, active and disabled selectio
 
 Playwright runs the application on a separate test-mode port. In that mode, a small typed runtime bridge exposes fresh dropdown state, emitted selections, and current interactive bounds converted to browser viewport coordinates. Tests still perform real pointer actions on the canvas; the bridge is observational and is removed during application teardown. The bridge flag is absent from the normal production build, so this test surface is not shipped to reviewers as application functionality.
 
+As a deliberate time-boxed trade-off, the bridge contract and installation are isolated in the testing layer, while the dropdown currently exposes the small set of state and bounds inspection methods used to build snapshots. In a larger production codebase, that instrumentation would be moved behind a dedicated test adapter so the component would contain no bridge-oriented inspection logic. The compact approach used here keeps the assignment implementation and its canvas E2E tests understandable without introducing a parallel component abstraction solely for testing.
+
+Unit tests are intentionally deferred because they were not part of the assignment requirements. The available time is prioritized toward Playwright coverage of real canvas interactions, which was explicitly identified as a core evaluation criterion. In a production codebase, focused unit tests would additionally cover the scroll controller, text truncation, layout validation, and sprite scaling helpers.
+
 ## Dependency security note
 
 The starter project pinned Vite 5.3.1 and Playwright 1.45.0. They were updated to Vite 8.2.1 and Playwright 1.62.1 because the original versions have known security vulnerabilities reported by `npm audit`. Vite required a major update because the relevant advisories also affect the available Vite 5 and 6 releases. These are security maintenance updates to the existing toolchain, not additional application dependencies. PixiJS 7.4.2 and GSAP 3.12.5 remain at the versions specified by the assignment.

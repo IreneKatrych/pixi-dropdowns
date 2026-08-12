@@ -2,6 +2,7 @@ import {
   Container,
   type FederatedPointerEvent,
   Graphics,
+  Point,
   Rectangle,
 } from 'pixi.js';
 import { COLORS } from '../../theme/colors';
@@ -105,6 +106,23 @@ export class DropdownScrollbarView extends Container {
 
   public getTrackTravel(): number {
     return this.trackTravel;
+  }
+
+  public getThumbInteractionBounds(): Rectangle {
+    const hitArea = this.interactionArea.hitArea as Rectangle;
+    const topLeft = this.interactionArea.toGlobal(
+      new Point(hitArea.x, hitArea.y),
+    );
+    const bottomRight = this.interactionArea.toGlobal(
+      new Point(hitArea.right, hitArea.bottom),
+    );
+
+    return new Rectangle(
+      Math.min(topLeft.x, bottomRight.x),
+      Math.min(topLeft.y, bottomRight.y),
+      Math.abs(bottomRight.x - topLeft.x),
+      Math.abs(bottomRight.y - topLeft.y),
+    );
   }
 
   public setDragging(isDragging: boolean): void {

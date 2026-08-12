@@ -421,6 +421,9 @@ export class Dropdown extends Container {
       scrollY: this.scrollController.getScrollY(),
       selectedOptionId: this.selectedOption?.id ?? null,
       selectedOptionHasIcon: Boolean(this.selectedOption?.icon),
+      isValueIconVisible: this.valueIcon.visible,
+      valueText: this.valueLabel.text,
+      isValueTruncated: this.valueLabel.text.endsWith('…'),
     };
   }
 
@@ -439,11 +442,15 @@ export class Dropdown extends Container {
       listBounds && this.itemsContainer.visible
         ? this.getVisibleOptionSnapshots(listBounds)
         : [];
+    const scrollbarThumbBounds = this.scrollbarView.visible
+      ? this.toDropdownBounds(this.scrollbarView.getThumbInteractionBounds())
+      : null;
 
     return {
       state: this.getState(),
       headerBounds,
       listBounds,
+      scrollbarThumbBounds,
       visibleOptions,
     };
   }
@@ -591,6 +598,15 @@ export class Dropdown extends Container {
       y: Math.min(topLeft.y, bottomRight.y),
       width: Math.abs(bottomRight.x - topLeft.x),
       height: Math.abs(bottomRight.y - topLeft.y),
+    };
+  }
+
+  private toDropdownBounds(bounds: Rectangle): DropdownBounds {
+    return {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
     };
   }
 
