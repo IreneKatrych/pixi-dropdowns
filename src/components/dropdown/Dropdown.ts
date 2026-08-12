@@ -500,8 +500,8 @@ export class Dropdown extends Container {
     this.selectedOption = option;
     this.updateSelectedItemStates();
     this.updateValueLabel();
-    this.config.onSelect?.({ dropdownId: this.config.id, option });
     this.close();
+    this.config.onSelect?.({ dropdownId: this.config.id, option });
   };
 
   private readonly handlePointerCancel = (): void => {

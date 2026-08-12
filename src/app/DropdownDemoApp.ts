@@ -83,6 +83,7 @@ export class DropdownDemoApp {
   private delayedOptionsRequestCount = 0;
   private dropdowns: Dropdown[] = [];
   private iconTextures: Texture[] = [];
+  private isDestroyed = false;
   private panelTexture: Texture | null = null;
   private removeTestBridge: (() => void) | null = null;
   private selectionLog: DropdownSelectionTestSnapshot[] | null =
@@ -91,7 +92,7 @@ export class DropdownDemoApp {
   public constructor(private readonly mountElement: HTMLElement) {}
 
   public async init(): Promise<void> {
-    if (this.application) {
+    if (this.application || this.isDestroyed) {
       return;
     }
 
@@ -118,10 +119,23 @@ export class DropdownDemoApp {
     window.addEventListener('resize', this.handleResize);
 
     try {
-      [this.panelTexture, this.checkmarkTexture] = await Promise.all([
+      const [panelTexture, checkmarkTexture] = await Promise.all([
         Assets.load<Texture>(PANEL_TEXTURE_URL),
         Assets.load<Texture>(CHECKMARK_TEXTURE_URL),
       ]);
+
+      // Asset requests cannot be aborted. Stop initialization if teardown
+      // happened while Pixi's shared Assets cache was resolving them.
+      if (this.isDestroyed) {
+        await Promise.all([
+          Assets.unload(PANEL_TEXTURE_URL),
+          Assets.unload(CHECKMARK_TEXTURE_URL),
+        ]);
+        return;
+      }
+
+      this.panelTexture = panelTexture;
+      this.checkmarkTexture = checkmarkTexture;
 
       const resources: DropdownResources = {
         headerBackground: this.createBackgroundResource(this.panelTexture),
@@ -219,6 +233,11 @@ export class DropdownDemoApp {
   }
 
   public destroy(): void {
+    if (this.isDestroyed) {
+      return;
+    }
+
+    this.isDestroyed = true;
     this.removeTestBridge?.();
     this.removeTestBridge = null;
     window.removeEventListener('resize', this.handleResize);
